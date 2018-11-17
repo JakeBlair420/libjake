@@ -15,11 +15,20 @@ typedef struct jake_symbols {
 } jake_symbols;
 
 typedef struct jake_symtab {
-    int msyms;
-    struct nlist *symbols;
+    int nsyms;
+    struct nlist_global *symbols;
 } jake_symtab;
+
+typedef struct nlist_global {
+    char *n_name;
+    uint8_t n_type;
+    uint8_t n_sect;
+    int16_t n_desc;
+    uint64_t n_value;
+} nlist_global;
 
 int jake_init_symbols(jake_symbols_t syms, const char *path);
 int jake_discard_symbols(jake_symbols_t syms);
 
 int find_symtab(jake_symbols_t syms);
+uint64_t find_symbol(jake_symbols_t syms, const char *name);

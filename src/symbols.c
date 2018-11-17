@@ -2,11 +2,14 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <fcntl.h>
+#include <mach-o/nlist.h>
 
 #include <sys/stat.h>
 #include <sys/mman.h>
 
+#include "common.h"
 #include "symbols.h"
 
 int jake_init_symbols(jake_symbols_t syms, const char *path)
@@ -71,8 +74,8 @@ int jake_discard_symbols(jake_symbols_t syms)
 
 int find_symtab(jake_symbols_t syms)
 {
-    bool is_swap = false;
-    int header_size = 0;
+    bool is_64, is_swap = false;
+    int header_size = 0, nlist_size = 0;
 
     uint32_t magic = syms->mach_header->magic;
 
@@ -83,19 +86,23 @@ int find_symtab(jake_symbols_t syms)
 
         is_swap = true;
     }
-
+    
     switch (magic)
     {
         case MH_MAGIC_64:
             header_size = sizeof(struct mach_header_64);
+            nlist_size = sizeof(struct nlist_64);
+            is_64 = true;
             break;
 
         case MH_MAGIC:
             header_size = sizeof(struct mach_header);
+            nlist_size = sizeof(struct nlist);
+            is_64 = false;
             break;
 
         default:
-            fprintf(stderr, "[libjake] Unknown magic! %x\n", magic);
+            LOG("Unknown magic! %x", magic);
             return -1;
     }
 
@@ -114,11 +121,57 @@ int find_symtab(jake_symbols_t syms)
 
     if (syms->symtab_cmd == NULL)
     {
-        fprintf(stderr, "[libjake] Failed to find symtab command.\n");
+        LOG("Failed to find symtab command.");
         return -1;
     }
 
+    syms->symtab = malloc(sizeof(jake_symtab));
 
+    syms->symtab->nsyms = syms->symtab_cmd->nsyms;
+    syms->symtab->symbols = malloc(syms->symtab->nsyms * sizeof(nlist_global));
+
+    for (int i = 0; i < syms->symtab->nsyms; i++)
+    {
+        nlist_global *sym = &syms->symtab->symbols[i];
+        struct nlist *item = (struct nlist *)(syms->map + syms->symtab_cmd->symoff + (i * nlist_size));
+
+        sym->n_name = (char *)(syms->map + syms->symtab_cmd->stroff + item->n_un.n_strx);
+        sym->n_type = item->n_type;
+        sym->n_sect = item->n_sect;
+        sym->n_desc = item->n_desc;
+
+        sym->n_value = is_64 ? *(uint64_t *)&item->n_value : item->n_value;
+    }
 
     return 0;
+}
+
+uint64_t find_symbol(jake_symbols_t syms, const char *name)
+{
+    if (syms->symtab == NULL)
+    {
+        return 0x0;
+    }
+
+    if (syms->symtab->nsyms == 0)
+    {
+        return 0x0;
+    }
+
+    if (syms->symtab->symbols == NULL)
+    {
+        return 0x0;
+    }
+
+    for (int i = 0; i < syms->symtab->nsyms; i++)
+    {
+        nlist_global *sym = &syms->symtab->symbols[i];
+
+        if (strcmp(sym->n_name, name) == 0)
+        {
+            return sym->n_value;
+        }
+    }
+
+    return 0x0;
 }
