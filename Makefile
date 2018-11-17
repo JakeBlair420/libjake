@@ -7,23 +7,31 @@ OBJDIR  = obj
 SOURCES = $(wildcard $(SRCDIR)/*.c)
 OBJECTS = $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(SOURCES))
 
-CC      = gcc
+ifeq ($(PLATFORM),ios)
+	CC = xcrun -sdk iphoneos gcc -arch arm64 -arch armv7s
+else
+	CC = gcc
+endif
+
 CFLAGS  = -Wall -Wunused-command-line-argument
+LIBTOOL = libtool
+MKDIR   = mkdir
+RM      = rm
 
 all: $(OUTDIR)/$(TARGET)
 
 $(OUTDIR)/$(TARGET): $(OBJECTS) | $(OUTDIR)
-	ar rcs $@ $^
+	$(LIBTOOL) -o $@ $^
 
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OUTDIR):
-	mkdir -p $(OUTDIR)
+	$(MKDIR) -p $(OUTDIR)
 
 $(OBJDIR):
-	mkdir -p $(OBJDIR)
+	$(MKDIR) -p $(OBJDIR)
 
 clean:
-	rm -r $(OUTDIR)
-	rm -r $(OBJDIR)
+	$(RM) -r $(OUTDIR)
+	$(RM) -r $(OBJDIR)
