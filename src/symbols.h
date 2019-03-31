@@ -1,5 +1,6 @@
 #include <mach-o/dyld.h>
-
+#ifndef LIBJAKE_SYMBOLS
+#define LIBJAKE_SYMBOLS
 typedef struct jake_symtab* jake_symtab_t;
 typedef struct jake_symbols* jake_symbols_t;
 
@@ -32,3 +33,4 @@ int jake_discard_symbols(jake_symbols_t syms);
 
 int find_symtab(jake_symbols_t syms);
 uint64_t find_symbol(jake_symbols_t syms, const char *name);
+#endif
