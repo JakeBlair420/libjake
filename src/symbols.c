@@ -29,15 +29,15 @@ int jake_init_symbols(jake_symbols_t syms, const char *path)
 
     syms->filesize = s.st_size;
     
-    syms->filedesc = open(syms->path, O_RDONLY);
-    if (syms->filedesc < 0)
+    syms->filedesc = img4_reopen(file_open(syms->path, O_RDONLY),NULL,0);
+    if (syms->filedesc == 0)
     {
         return -1;
     }
 
-    syms->map = mmap(NULL, s.st_size, PROT_READ, MAP_PRIVATE, syms->filedesc, 0);
+	int ret = syms->filedesc->ioctl(syms->filedesc,IOCTL_MEM_GET_DATAPTR,&syms->map,&syms->mapsize);
 
-    if (syms->map == MAP_FAILED)
+    if (ret != 0)
     {
         jake_discard_symbols(syms);
 
@@ -58,15 +58,9 @@ int jake_init_symbols(jake_symbols_t syms, const char *path)
 
 int jake_discard_symbols(jake_symbols_t syms)
 {
-    if (syms->map != NULL &&
-        syms->map != MAP_FAILED)
-    {
-        munmap((void *)syms->map, syms->filesize);
-    }
-    
     if (syms->filedesc >= 0)
     {
-        close(syms->filedesc);
+		syms->filedesc->close(syms->filedesc);
     }
 
     return 0;

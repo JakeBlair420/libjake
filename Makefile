@@ -13,6 +13,7 @@ else
 	CC = gcc
 endif
 
+INC=-I./img4lib/libvfs/
 CFLAGS  = -Wall -Wunused-command-line-argument
 LIBTOOL = libtool
 MKDIR   = mkdir
@@ -21,10 +22,10 @@ RM      = rm
 all: $(OUTDIR)/$(TARGET)
 
 $(OUTDIR)/$(TARGET): $(OBJECTS) | $(OUTDIR)
-	$(LIBTOOL) -o $@ $^
+	$(LIBTOOL) -o $@ $^ 
 
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.c | $(OBJDIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(INC) -c $< -o $@
 
 $(OUTDIR):
 	$(MKDIR) -p $(OUTDIR)
@@ -33,5 +34,5 @@ $(OBJDIR):
 	$(MKDIR) -p $(OBJDIR)
 
 clean:
-	$(RM) -r $(OUTDIR)
-	$(RM) -r $(OBJDIR)
+	$(RM) -rf $(OUTDIR)
+	$(RM) -rf $(OBJDIR)

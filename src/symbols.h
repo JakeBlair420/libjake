@@ -1,4 +1,5 @@
 #include <mach-o/dyld.h>
+#include <vfs.h>
 #ifndef LIBJAKE_SYMBOLS
 #define LIBJAKE_SYMBOLS
 typedef struct jake_symtab* jake_symtab_t;
@@ -6,9 +7,10 @@ typedef struct jake_symbols* jake_symbols_t;
 
 typedef struct jake_symbols {
     const char *path;
-    int filedesc;
+    FHANDLE filedesc;
     size_t filesize;
     const void *map;
+	size_t mapsize;
 
     struct mach_header *mach_header;
     struct symtab_command *symtab_cmd;
