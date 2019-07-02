@@ -235,6 +235,7 @@ uint64_t jake_find_symbol(jake_img_t img, const char *name)
 
 uint64_t jake_fileoff_to_vaddr(jake_img_t img, uint64_t fileoff)
 {
+    uint64_t found_value = 0x0;
     struct load_command **seg_array    = jake_find_load_cmds(img, LC_SEGMENT   );
     struct load_command **seg_array_64 = jake_find_load_cmds(img, LC_SEGMENT_64);
 
@@ -248,11 +249,10 @@ uint64_t jake_fileoff_to_vaddr(jake_img_t img, uint64_t fileoff)
             if (fileoff >= seg->fileoff &&
                 fileoff < seg->fileoff + seg->filesize)
             {
-                return seg->vmaddr + (fileoff - seg->fileoff);   
+                found_value = seg->vmaddr + (fileoff - seg->fileoff);   
+                goto out;
             }
         }
-
-        free(seg_array);
     }
 
     /* lookup in LC_SEGMENT_64's */
@@ -265,15 +265,25 @@ uint64_t jake_fileoff_to_vaddr(jake_img_t img, uint64_t fileoff)
             if (fileoff >= seg->fileoff &&
                 fileoff < seg->fileoff + seg->filesize)
             {   
-                return seg->vmaddr + (fileoff - seg->fileoff);
+                found_value = seg->vmaddr + (fileoff - seg->fileoff);
+                goto out;
             }
         }
+    }
 
+out:;
+
+    if (seg_array)
+    {
+        free(seg_array);
+    }
+
+    if (seg_array_64)
+    {
         free(seg_array_64);
     }
 
-    /* no matches */
-    return 0x0;
+    return found_value;
 }
 uint64_t jake_vaddr_to_fileoff(jake_img_t img, uint64_t vaddr)
 {
