@@ -45,5 +45,6 @@ int jake_find_symtab(jake_img_t img);
 uint64_t jake_find_symbol(jake_img_t img, const char *name);
 
 uint64_t jake_fileoff_to_vaddr(jake_img_t img, uint64_t fileoff);
+uint64_t jake_vaddr_to_fileoff(jake_img_t img, uint64_t vaddr);
 
 #endif

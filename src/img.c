@@ -267,3 +267,41 @@ uint64_t jake_fileoff_to_vaddr(jake_img_t img, uint64_t fileoff)
     /* no matches */
     return 0x0;
 }
+uint64_t jake_vaddr_to_fileoff(jake_img_t img, uint64_t vaddr)
+{
+    struct load_command **seg_array    = jake_find_load_cmds(img, LC_SEGMENT   );
+    struct load_command **seg_array_64 = jake_find_load_cmds(img, LC_SEGMENT_64);
+
+    /* lookup in LC_SEGMENT's first */
+    if (seg_array != NULL)
+    {
+        for (struct load_command *cmd = *seg_array; cmd != NULL; cmd++)
+        {
+            struct segment_command *seg = (struct segment_command *)cmd;
+
+            if (vaddr >= seg->vmaddr &&
+                vaddr < seg->vmaddr + seg->filesize)
+            {
+                return seg->fileoff + (vaddr - seg->vmaddr);
+            }
+        }
+    }
+
+    /* lookup in LC_SEGMENT_64's */
+    if (seg_array_64 != NULL)
+    {
+        for (struct load_command *cmd = *seg_array_64; cmd != NULL; cmd++)
+        {
+            struct segment_command_64 *seg = (struct segment_command_64 *)cmd;
+
+            if (vaddr >= seg->vmaddr &&
+                vaddr < seg->vmaddr + seg->filesize)
+            {
+                return seg->fileoff + (vaddr - seg->vmaddr);
+            }
+        }
+    }
+
+    /* no matches */
+    return 0x0;
+}

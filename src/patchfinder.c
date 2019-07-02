@@ -8,13 +8,13 @@ uint64_t libjake_find_str(jake_img_t img,char * str) {
 		FAILED_TO_FIND();	
 		return 0;
 	}
-	return found-((uint64_t)img->map)+LIBJAKE_KERNEL_BASE;
+	return file2vm(found);
 }
 uint64_t find_xref(jake_img_t img,uint64_t start_addr,uint64_t xref_address) {
 	// we search for either adr or adrp + (add/ldr)
 	// this also verifies that the input register of ldr/add is the right register
-	xref_address -= LIBJAKE_KERNEL_BASE; // we search on some mapping so we will just use the offset inside of that mapping as the address (when we return we slide it back)
-	uint64_t search_start_offset = start_addr - LIBJAKE_KERNEL_BASE; // same here
+	xref_address = vm2file(xref_address); // we search on some mapping so we will just use the offset inside of that mapping as the address (when we return we slide it back)
+	uint64_t search_start_offset = vm2file(start_addr); // same here (here the user can also pass zero then the start address will match nothing and also just return 0)
 	uint64_t adr_value = 0x0;
 	char current_reg = -1;
 	for (uint64_t addr = search_start_offset & 3; addr < img->mapsize; addr += 4) {
@@ -29,8 +29,9 @@ uint64_t find_xref(jake_img_t img,uint64_t start_addr,uint64_t xref_address) {
 			if ((adr_value + get_add_sub_imm((add_imm_t*)&ins)) == xref_address)	{
 				char myreg = ((add_imm_t*)&ins)->Rn;
 				if (current_reg == myreg) {
-					P_LOG_DBG("Found xref (adr(p) + add) @ %llx\n",addr+LIBJAKE_KERNEL_BASE);
-					return addr + LIBJAKE_KERNEL_BASE;
+					addr = file2vm(addr);
+					P_LOG_DBG("Found xref (adr(p) + add) @ %llx\n",addr);
+					return addr;
 				}else{
 					P_LOG_DBG("Found adr(p) + add but reg isn't matching... got %d expected %d\n",myreg,current_reg);
 				}
@@ -39,8 +40,9 @@ uint64_t find_xref(jake_img_t img,uint64_t start_addr,uint64_t xref_address) {
 			if ((adr_value + get_ldr_imm_uoff((ldr_imm_uoff_t*)&ins)) == xref_address) {
 				char myreg = ((ldr_imm_uoff_t*)&ins)->Rn;
 				if (current_reg == myreg) {
-					P_LOG_DBG("Found xref (adr(p) + ldr) @ %llx\n",addr+LIBJAKE_KERNEL_BASE);
-					return addr + LIBJAKE_KERNEL_BASE;
+					addr = file2vm(addr);
+					P_LOG_DBG("Found xref (adr(p) + ldr) @ %llx\n",addr);
+					return addr;
 				}else{
 					P_LOG_DBG("Found adr(p) + ldr but reg isn't matching... got %d expected %d\n",myreg,current_reg);
 				}
@@ -50,11 +52,12 @@ uint64_t find_xref(jake_img_t img,uint64_t start_addr,uint64_t xref_address) {
 			adr_value = 0x0;
 		}
 		if (adr_value == xref_address) {
-			P_LOG_DBG("Found xref (adr(p)) @ %llx\n",addr+LIBJAKE_KERNEL_BASE);
-			return addr + LIBJAKE_KERNEL_BASE;
+			addr = file2vm(addr);
+			P_LOG_DBG("Found xref (adr(p)) @ %llx\n",addr);
+			return addr;
 		}
 	}
-	P_LOG_DBG("Unable to find xref for %llx starting from address %llx\n",xref_address+LIBJAKE_KERNEL_BASE,start_addr);
+	P_LOG_DBG("Unable to find xref for %llx starting from address %llx\n",file2vm(xref_address),start_addr);
 	FAILED_TO_FIND();
 	return 0;
 }
@@ -63,7 +66,7 @@ uint64_t find_load_skip(jake_img_t img, uint64_t start_addr, uint64_t n_instr, b
 	// this also verifies that the input register of ldr/add is the right register
 	uint64_t adr_value = 0x0;
 	char current_reg = -1;
-	uint64_t start_off = start_addr - LIBJAKE_KERNEL_BASE;
+	uint64_t start_off = vm2file(start_addr);
 	bool was_adr = false;
 	int step = 4;
 	if (backwards) {step = -step;}
@@ -83,23 +86,25 @@ uint64_t find_load_skip(jake_img_t img, uint64_t start_addr, uint64_t n_instr, b
 		} else if (is_add_imm((add_imm_t*)&ins) && adr_value != 0) {
 			char myreg = ((add_imm_t*)&ins)->Rn;
 			if (current_reg == myreg) {
-				P_LOG_DBG("Found load (adr(p) + add) @ %llx\n",addr+LIBJAKE_KERNEL_BASE);
-				return LIBJAKE_KERNEL_BASE + adr_value + get_add_sub_imm((add_imm_t*)&ins);
+				addr = file2vm(addr);
+				P_LOG_DBG("Found load (adr(p) + add) @ %llx\n",addr);
+				return file2vm(adr_value) + get_add_sub_imm((add_imm_t*)&ins);
 			}else{
 				P_LOG_DBG("Found adr(p) + add but reg isn't matching... got %d expected %d\n",myreg,current_reg);
 			}
 		} else if (is_ldr_imm_uoff((ldr_imm_uoff_t*)&ins) && adr_value != 0) {
 			char myreg = ((ldr_imm_uoff_t*)&ins)->Rn;
 			if (current_reg == myreg) {
-				P_LOG_DBG("Found load (adr(p) + ldr) @ %llx\n",addr+LIBJAKE_KERNEL_BASE);
-				return LIBJAKE_KERNEL_BASE + adr_value + get_ldr_imm_uoff((ldr_imm_uoff_t*)&ins);
+				addr = file2vm(addr);
+				P_LOG_DBG("Found load (adr(p) + ldr) @ %llx\n",addr);
+				return file2vm(adr_value) + get_ldr_imm_uoff((ldr_imm_uoff_t*)&ins);
 			}else{
 				P_LOG_DBG("Found adr(p) + ldr but reg isn't matching... got %d expected %d\n",myreg,current_reg);
 			}
 		} else {
 			// we also just except adr
 			if (was_adr) {
-				return LIBJAKE_KERNEL_BASE + adr_value;
+				return file2vm(adr_value);
 			}
 			// we need to start walking backwards again if we found nothing
 			if (adr_value && backwards) {
@@ -117,7 +122,7 @@ uint64_t find_load_skip(jake_img_t img, uint64_t start_addr, uint64_t n_instr, b
 #define find_load(img,start,n_instr,backwards) find_load_skip(img,start,n_instr,backwards,0)
 
 uint64_t find_str_xref(jake_img_t img, char * str) {
-	return find_xref(img,LIBJAKE_KERNEL_BASE,libjake_find_str(img,str));
+	return find_xref(img,0,libjake_find_str(img,str));
 }
 
 uint64_t find_swapprefix(jake_img_t img) {
