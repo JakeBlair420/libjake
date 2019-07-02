@@ -58,8 +58,7 @@ uint64_t find_xref(jake_symbols_t syms,uint64_t start_addr,uint64_t xref_address
 	FAILED_TO_FIND();
 	return 0;
 }
-
-uint64_t find_load(jake_symbols_t syms, uint64_t start_addr, uint64_t n_instr, bool backwards) {
+uint64_t find_load_skip(jake_symbols_t syms, uint64_t start_addr, uint64_t n_instr, bool backwards, int toskip) {
 	// we search for either adr or adrp + (add/ldr)
 	// this also verifies that the input register of ldr/add is the right register
 	uint64_t adr_value = 0x0;
@@ -71,15 +70,17 @@ uint64_t find_load(jake_symbols_t syms, uint64_t start_addr, uint64_t n_instr, b
 	for (uint64_t addr = start_off; addr < (start_off + n_instr*4); addr += step) {
 		uint32_t ins = *(uint32_t *)(syms->map + addr);
 		if (is_adr((adr_t*)&ins)) {
+			if (toskip > 0) {toskip--;continue;}
 			adr_value = addr + get_adr_off((adr_t*)&ins);
 			current_reg = ((adr_t*)&ins)->Rd;
 			was_adr = true;
 			step = 4; // from here we ofc have to move forwards again
 		} else if (is_adrp((adr_t*)&ins)) {
+			if (toskip > 0) {toskip--;continue;}
 			adr_value = (addr & ~0xfff) + get_adr_off((adr_t*)&ins);
 			current_reg = ((adr_t*)&ins)->Rd;
 			step = 4; // from here we ofc have to move forwards again
-		} else if (is_add_imm((add_imm_t*)&ins)) {
+		} else if (is_add_imm((add_imm_t*)&ins) && adr_value != 0) {
 			char myreg = ((add_imm_t*)&ins)->Rn;
 			if (current_reg == myreg) {
 				P_LOG_DBG("Found load (adr(p) + add) @ %llx\n",addr+LIBJAKE_KERNEL_BASE);
@@ -87,7 +88,7 @@ uint64_t find_load(jake_symbols_t syms, uint64_t start_addr, uint64_t n_instr, b
 			}else{
 				P_LOG_DBG("Found adr(p) + add but reg isn't matching... got %d expected %d\n",myreg,current_reg);
 			}
-		} else if (is_ldr_imm_uoff((ldr_imm_uoff_t*)&ins)) {
+		} else if (is_ldr_imm_uoff((ldr_imm_uoff_t*)&ins) && adr_value != 0) {
 			char myreg = ((ldr_imm_uoff_t*)&ins)->Rn;
 			if (current_reg == myreg) {
 				P_LOG_DBG("Found load (adr(p) + ldr) @ %llx\n",addr+LIBJAKE_KERNEL_BASE);
@@ -113,6 +114,7 @@ uint64_t find_load(jake_symbols_t syms, uint64_t start_addr, uint64_t n_instr, b
 	FAILED_TO_FIND();
 	return 0;
 }
+#define find_load(syms,start,n_instr,backwards) find_load_skip(syms,start,n_instr,backwards,0)
 
 uint64_t find_str_xref(jake_symbols_t syms, char * str) {
 	return find_xref(syms,LIBJAKE_KERNEL_BASE,libjake_find_str(syms,str));
@@ -136,8 +138,7 @@ uint64_t find_trustcache(jake_symbols_t syms) {
 		return 0x0;
 	}
 	P_LOG_DBG("Found string ref for trustcache @ %llx\n",str_ref);
-	uint64_t first_load = find_load(syms,str_ref,15,false);
-	uint64_t found = find_load(syms,first_load+4,15,false);
+	uint64_t found = find_load_skip(syms,first_load,15,false,1);
 	P_LOG_DBG("Found trustcache @ %llx\n",found);
 	return found;
 }
