@@ -143,7 +143,7 @@ struct load_command **jake_find_load_cmds(jake_img_t img, int command)
             lc_array[curr_cmd_index++] = cmd;
         }
 
-        cmd = (struct load_command *)((uintptr_t)img->map + header_size);
+        cmd = (struct load_command *)((uintptr_t)cmd + cmd->cmdsize);
     }
 
     return lc_array;
