@@ -8,12 +8,11 @@ uint64_t libjake_find_str(jake_img_t img,char * str) {
 		FAILED_TO_FIND();	
 		return 0;
 	}
-	return file2vm(found);
+	return file2vm_sub(found);
 }
 uint64_t find_xref(jake_img_t img,uint64_t start_addr,uint64_t xref_address) {
 	// we search for either adr or adrp + (add/ldr)
 	// this also verifies that the input register of ldr/add is the right register
-	xref_address = vm2file(xref_address); // we search on some mapping so we will just use the offset inside of that mapping as the address (when we return we slide it back)
 	uint64_t search_start_offset = vm2file(start_addr); // same here
 	if (start_addr == 0) {
 		search_start_offset = 0; // start from the beginning
@@ -23,10 +22,10 @@ uint64_t find_xref(jake_img_t img,uint64_t start_addr,uint64_t xref_address) {
 	for (uint64_t addr = search_start_offset & 3; addr < img->mapsize; addr += 4) {
 		uint32_t ins = *(uint32_t *)(img->map + addr);
 		if (is_adr((adr_t*)&ins)) {
-			adr_value = addr + get_adr_off((adr_t*)&ins);
+			adr_value = file2vm(addr) + get_adr_off((adr_t*)&ins);
 			current_reg = ((adr_t*)&ins)->Rd;
 		} else if (is_adrp((adr_t*)&ins)) {
-			adr_value = (addr & ~0xfff) + get_adr_off((adr_t*)&ins);
+			adr_value = file2vm((addr & ~0xfff)) + get_adr_off((adr_t*)&ins);
 			current_reg = ((adr_t*)&ins)->Rd;
 		} else if (is_add_imm((add_imm_t*)&ins)) {
 			if ((adr_value + get_add_sub_imm((add_imm_t*)&ins)) == xref_address)	{
@@ -60,7 +59,7 @@ uint64_t find_xref(jake_img_t img,uint64_t start_addr,uint64_t xref_address) {
 			return addr;
 		}
 	}
-	P_LOG_DBG("Unable to find xref for %llx starting from address %llx\n",file2vm(xref_address),start_addr);
+	P_LOG_DBG("Unable to find xref for %llx starting from address %llx\n",xref_address,start_addr);
 	FAILED_TO_FIND();
 	return 0;
 }
@@ -77,13 +76,13 @@ uint64_t find_load_skip(jake_img_t img, uint64_t start_addr, uint64_t n_instr, b
 		uint32_t ins = *(uint32_t *)(img->map + addr);
 		if (is_adr((adr_t*)&ins)) {
 			if (toskip > 0) {toskip--;continue;}
-			adr_value = addr + get_adr_off((adr_t*)&ins);
+			adr_value = file2vm(addr) + get_adr_off((adr_t*)&ins);
 			current_reg = ((adr_t*)&ins)->Rd;
 			was_adr = true;
 			step = 4; // from here we ofc have to move forwards again
 		} else if (is_adrp((adr_t*)&ins)) {
 			if (toskip > 0) {toskip--;continue;}
-			adr_value = (addr & ~0xfff) + get_adr_off((adr_t*)&ins);
+			adr_value = file2vm((addr & ~0xfff)) + get_adr_off((adr_t*)&ins);
 			current_reg = ((adr_t*)&ins)->Rd;
 			step = 4; // from here we ofc have to move forwards again
 		} else if (is_add_imm((add_imm_t*)&ins) && adr_value != 0) {
@@ -91,7 +90,7 @@ uint64_t find_load_skip(jake_img_t img, uint64_t start_addr, uint64_t n_instr, b
 			if (current_reg == myreg) {
 				addr = file2vm(addr);
 				P_LOG_DBG("Found load (adr(p) + add) @ %llx\n",addr);
-				return file2vm(adr_value) + get_add_sub_imm((add_imm_t*)&ins);
+				return adr_value + get_add_sub_imm((add_imm_t*)&ins);
 			}else{
 				P_LOG_DBG("Found adr(p) + add but reg isn't matching... got %d expected %d\n",myreg,current_reg);
 			}
@@ -100,14 +99,14 @@ uint64_t find_load_skip(jake_img_t img, uint64_t start_addr, uint64_t n_instr, b
 			if (current_reg == myreg) {
 				addr = file2vm(addr);
 				P_LOG_DBG("Found load (adr(p) + ldr) @ %llx\n",addr);
-				return file2vm(adr_value) + get_ldr_imm_uoff((ldr_imm_uoff_t*)&ins);
+				return adr_value + get_ldr_imm_uoff((ldr_imm_uoff_t*)&ins);
 			}else{
 				P_LOG_DBG("Found adr(p) + ldr but reg isn't matching... got %d expected %d\n",myreg,current_reg);
 			}
 		} else {
 			// we also just except adr
 			if (was_adr) {
-				return file2vm(adr_value);
+				return adr_value;
 			}
 			// we need to start walking backwards again if we found nothing
 			if (adr_value && backwards) {

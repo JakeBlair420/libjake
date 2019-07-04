@@ -274,7 +274,6 @@ uint64_t jake_fileoff_to_vaddr(jake_img_t img, uint64_t fileoff)
     }
 
 out:;
-	LOG("%llx => %llx\n",fileoff,found_value);
 
     if (seg_array)
     {
@@ -330,7 +329,6 @@ uint64_t jake_vaddr_to_fileoff(jake_img_t img, uint64_t vaddr)
     }
 
 out:;
-	LOG("%llx <= %llx\n",found_value,vaddr);
 	if (seg_array) {
 		free(seg_array);
 	}

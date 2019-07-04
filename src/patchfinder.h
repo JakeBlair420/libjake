@@ -7,6 +7,7 @@
 #ifndef LIBJAKE_PATCHFINDER
 #define LIBJAKE_PATCHFINDER
 #define FAILED_TO_FIND() exit(1)
+#define file2vm_sub(offset) jake_fileoff_to_vaddr(img,offset-(uint64_t)img->map)
 #define file2vm(offset) jake_fileoff_to_vaddr(img,offset)
 #define vm2file(addr) jake_vaddr_to_fileoff(img,addr)
 uint64_t libjake_find_str(jake_img_t syms, char * str);
