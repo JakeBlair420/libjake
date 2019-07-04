@@ -14,7 +14,10 @@ uint64_t find_xref(jake_img_t img,uint64_t start_addr,uint64_t xref_address) {
 	// we search for either adr or adrp + (add/ldr)
 	// this also verifies that the input register of ldr/add is the right register
 	xref_address = vm2file(xref_address); // we search on some mapping so we will just use the offset inside of that mapping as the address (when we return we slide it back)
-	uint64_t search_start_offset = vm2file(start_addr); // same here (here the user can also pass zero then the start address will match nothing and also just return 0)
+	uint64_t search_start_offset = vm2file(start_addr); // same here
+	if (start_addr == 0) {
+		search_start_offset = 0; // start from the beginning
+	}
 	uint64_t adr_value = 0x0;
 	char current_reg = -1;
 	for (uint64_t addr = search_start_offset & 3; addr < img->mapsize; addr += 4) {

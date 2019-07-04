@@ -287,20 +287,22 @@ out:;
 }
 uint64_t jake_vaddr_to_fileoff(jake_img_t img, uint64_t vaddr)
 {
+	uint64_t found_value = 0x0;
     struct load_command **seg_array    = jake_find_load_cmds(img, LC_SEGMENT   );
     struct load_command **seg_array_64 = jake_find_load_cmds(img, LC_SEGMENT_64);
 
     /* lookup in LC_SEGMENT's first */
     if (seg_array != NULL)
     {
-        for (struct load_command *cmd = *seg_array; cmd != NULL; cmd++)
+        for (struct load_command *cmd = *seg_array++; cmd; *seg_array++)
         {
             struct segment_command *seg = (struct segment_command *)cmd;
 
             if (vaddr >= seg->vmaddr &&
                 vaddr < seg->vmaddr + seg->filesize)
             {
-                return seg->fileoff + (vaddr - seg->vmaddr);
+                found_value = seg->fileoff + (vaddr - seg->vmaddr);
+				goto out;
             }
         }
     }
@@ -308,18 +310,25 @@ uint64_t jake_vaddr_to_fileoff(jake_img_t img, uint64_t vaddr)
     /* lookup in LC_SEGMENT_64's */
     if (seg_array_64 != NULL)
     {
-        for (struct load_command *cmd = *seg_array_64; cmd != NULL; cmd++)
+        for (struct load_command *cmd = *seg_array_64; cmd; *seg_array++)
         {
             struct segment_command_64 *seg = (struct segment_command_64 *)cmd;
 
             if (vaddr >= seg->vmaddr &&
                 vaddr < seg->vmaddr + seg->filesize)
             {
-                return seg->fileoff + (vaddr - seg->vmaddr);
+                found_value = seg->fileoff + (vaddr - seg->vmaddr);
+				goto out;
             }
         }
     }
 
-    /* no matches */
-    return 0x0;
+out:;
+	if (seg_array) {
+		free(seg_array);
+	}
+	if (seg_array_64) {
+		free(seg_array_64);
+	}
+    return found_value;
 }
