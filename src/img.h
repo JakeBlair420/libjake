@@ -4,17 +4,19 @@
 #include <mach-o/dyld.h>
 #include <vfs.h>
 
-typedef struct jake_img* jake_img_t;
-typedef struct jake_symtab* jake_symtab_t;
+typedef struct jake_img * jake_img_t;
+typedef struct jake_symtab * jake_symtab_t;
 
 typedef struct jake_img {
     const char *path;
-    FHANDLE filedesc;
+    int filedesc;
+    FHANDLE filehandle;
     size_t filesize;
     const void *map;
 	size_t mapsize;
 
     struct mach_header *mach_header;
+    struct load_command **load_commands;
     struct symtab_command *symtab_cmd;
     jake_symtab_t symtab;
 } jake_img;
@@ -38,7 +40,6 @@ int jake_discard_image(jake_img_t img);
 bool jake_is_swap_img(jake_img_t img);
 bool jake_is_64bit_img(jake_img_t img);
 
-struct load_command **jake_find_load_cmds(jake_img_t img, int command);
 struct load_command *jake_find_load_cmd(jake_img_t img, int command);
 
 int jake_find_symtab(jake_img_t img);

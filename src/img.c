@@ -14,49 +14,218 @@
 
 int jake_init_image(jake_img_t img, const char *path)
 {
+    int ret = 0;
+
     if (access(path, F_OK) != 0)
     {
-        return -1;
+        LOG("Could not find file '%s'", path);
+        goto fail;
     }
 
     img->path = path;
 
     struct stat s = { 0 };
-    if (stat(path, &s))
+    ret = stat(img->path, &s);
+    if (ret != 0)
     {
-        return -1;
+        LOG("Failed to stat file '%s'", img->path);
+        goto fail;
     }
 
     img->filesize = s.st_size;
 
-    img->filedesc = img4_reopen(file_open(img->path, O_RDONLY),NULL,0);
-    if (img->filedesc == 0)
+    if (img->filesize < 100)
     {
-        return -1;
+        LOG("Filesize too small: %zu bytes", img->filesize);
+        goto fail;
     }
 
-	int ret = img->filedesc->ioctl(img->filedesc,IOCTL_MEM_GET_DATAPTR,&img->map,&img->mapsize);
-
-    if (ret != 0)
+    img->filedesc = open(img->path, O_RDONLY);
+    if (img->filedesc < 0)
     {
-        jake_discard_image(img);
-
-        return -1;
+        LOG("Failed to open the image");
+        goto fail;
     }
+
+    char file_hdr[100] = { 0 };
+    read(img->filedesc, &file_hdr, sizeof(file_hdr));
+
+    uint32_t file_magic = *(uint32_t *)&file_hdr;
+
+    /* TODO: Parse the file as ASN.1 to check if it's IMG4 */
+    char *img4_val = strstr((const char *)&file_hdr, "IMG4");
+
+    if (img4_val != NULL) /* Is img4 */
+    {
+        close(img->filedesc);
+        img->filedesc = 0;
+
+        img->filehandle = file_open(img->path, O_RDONLY);
+        if (img->filehandle == NULL)
+        {
+            LOG("Failed to open img4 file");
+            goto fail;
+        }
+
+        img->filehandle = img4_reopen(img->filehandle, NULL, 0);
+        if (img->filehandle == NULL)
+        {
+            LOG("Failed to open img4");
+            goto fail;
+        }
+
+        ret = img->filehandle->ioctl(img->filehandle, IOCTL_MEM_GET_DATAPTR, &img->map, &img->mapsize);
+        if (ret != 0)
+        {
+            LOG("Failed to map img4");
+            goto fail;
+        }
+    }
+    else if (file_magic == MH_MAGIC ||
+             file_magic == MH_MAGIC_64)
+    {
+        img->map = mmap(NULL, img->filesize, PROT_READ, MAP_PRIVATE, img->filedesc, 0);
+        if (img->map == MAP_FAILED)
+        {
+            LOG("Failed to map image");
+            goto fail;
+        }
+    }
+    else
+    {
+        LOG("Unknown file type! Magic: %x", file_magic);
+        goto fail;
+    }
+
+#if 0
+#define kASN1TagSEQUENCE        16 //0x10
+#define kASN1TagIA5String       22 //0x16
+
+    typedef struct {
+        uint8_t tagNumber : 5,
+                isConstructed : 1,
+                tagClass : 2;
+    } asn1Tag;
+
+    typedef struct {
+        uint8_t len : 7,
+                isLong : 1;
+    } asn1Length;
+
+    typedef struct{
+        size_t dataLen;
+        size_t sizeBytes;
+    } asn1ElemLen;
+
+    asn1Tag *tag = (asn1Tag *)&file_hdr;
+
+    if (tag->tagNumber != kASN1TagSEQUENCE)
+    {
+        LOG("not a sequence");
+    }
+    else
+    {
+        LOG("is a sequence");
+    
+        asn1Length *length = (asn1Length *)tag++;
+        LOG("length = %d %d", length->len, length->isLong);
+
+        asn1ElemLen elemLen = {
+            .dataLen = length->len,
+            .sizeBytes = 1,
+        };
+
+        asn1Tag *tag2 = (asn1Tag *)tag++;
+        LOG("tagNumber = %x", tag2->tagNumber);
+        if ((tag2->tagNumber  | kASN1TagIA5String) == 0)
+        {
+            LOG("not a string");
+            goto fail;
+        }
+        else LOG("is a string");
+    }
+#endif 
 
     img->mach_header = (struct mach_header *)img->map;
+
+    /* parse all mach-o segments and cache them */
+    int header_size = 0;
+    uint32_t magic = img->mach_header->magic;
+
+    switch (magic)
+    {
+        case MH_MAGIC_64:
+            header_size = sizeof(struct mach_header_64);
+            break;
+
+        case MH_MAGIC:
+            header_size = sizeof(struct mach_header);
+            break;
+
+        default: 
+            LOG("Unknown magic: %x", magic);
+            goto fail;
+    }
+
+    img->load_commands = (struct load_command **)malloc((img->mach_header->ncmds + 1) * sizeof(struct load_command *));
+
+    struct load_command *cmd = (struct load_command *)((uintptr_t)img->map + header_size);
+
+    for (int i = 0; i < img->mach_header->ncmds; i++)
+    {
+        img->load_commands[i] = cmd;
+
+        cmd = (struct load_command *)((uintptr_t)cmd + cmd->cmdsize);
+    
+        if ((uintptr_t)cmd > (uintptr_t)img->map + img->filesize)
+        {
+            LOG("Load commands are out of bounds! Last command size: %x", cmd->cmdsize);
+            goto fail;
+        }
+    }
+
+    img->load_commands[img->mach_header->ncmds - 1] = NULL;
 
     /* might fail */
     jake_find_symtab(img);
 
     return 0;
+
+fail:;
+    jake_discard_image(img);
+    return -1;
 }
 
 int jake_discard_image(jake_img_t img)
 {
-    if (img->filedesc >= 0)
+    if (img->filehandle != NULL)
     {
-		img->filedesc->close(img->filedesc);
+		img->filehandle->close(img->filehandle);
+    }
+
+    if (img->filedesc != 0)
+    {
+        if (img->map != NULL)
+        {
+            munmap((void *)img->map, img->filesize);
+        }
+
+        close(img->filedesc);
+    }
+
+    if (img->load_commands != NULL)
+    {
+        free(img->load_commands);
+    }
+
+    if (img->symtab != NULL)
+    {
+        if (img->symtab->symbols != NULL)
+        {
+            free(img->symtab->symbols);
+        }
+
+        free(img->symtab);
     }
 
     return 0;
@@ -81,89 +250,19 @@ bool jake_is_64bit_img(jake_img_t img)
     return magic == MH_MAGIC_64;
 }
 
-struct load_command **jake_find_load_cmds(jake_img_t img, int command)
-{
-    int header_size = 0;
-
-    bool is_swap = jake_is_swap_img(img);
-
-    uint32_t magic = img->mach_header->magic;
-
-    if (is_swap)
-    {
-        magic = ntohl(magic);
-    }
-
-    switch (magic)
-    {
-        case MH_MAGIC_64:
-            header_size = sizeof(struct mach_header_64);
-            break;
-
-        case MH_MAGIC:
-            header_size = sizeof(struct mach_header);
-            break;
-
-        default:
-            LOG("Unknown magic! %x", magic);
-            return NULL;
-    }
-
-    int matching_cmd_count = 0;
-
-    struct load_command *cmd = (struct load_command *)((uintptr_t)img->map + header_size);
-
-    for (int i = 0; i < img->mach_header->ncmds; i++)
-    {
-        if (cmd->cmd == command)
-        {
-            matching_cmd_count++;
-        }
-
-        cmd = (struct load_command *)((uintptr_t)cmd + cmd->cmdsize);
-    }
-
-    /* no matching commands */
-    if (matching_cmd_count == 0)
-    {
-        return NULL;
-    }
-    ++matching_cmd_count;
-    /* holds array of pointers to load commands */
-    struct load_command **lc_array = (struct load_command **)malloc(matching_cmd_count * sizeof(struct load_command *));
-
-    /* reset back to start */
-    cmd = (struct load_command *)((uintptr_t)img->map + header_size);
-
-    int curr_cmd_index = 0;
-    for (int i = 0; i < img->mach_header->ncmds; i++)
-    {
-        if (cmd->cmd == command)
-        {
-            lc_array[curr_cmd_index++] = cmd;
-        }
-
-        cmd = (struct load_command *)((uintptr_t)cmd + cmd->cmdsize);
-    }
-    lc_array[curr_cmd_index++] = NULL;
-    return lc_array;
-}
-
 struct load_command *jake_find_load_cmd(jake_img_t img, int command)
 {
-    /* we'll find all matching load command and return the first match (if present) */
-    struct load_command **lc_array = jake_find_load_cmds(img, command);
-
-    if (lc_array == NULL)
+    for (int i = 0; i < img->mach_header->ncmds; i++)
     {
-        return NULL;
+        struct load_command *cmd = img->load_commands[i];
+
+        if (cmd->cmd == command)
+        {
+            return cmd;
+        }
     }
 
-    struct load_command *load_cmd = lc_array[0];
-
-    free(lc_array);
-
-    return load_cmd;
+    return NULL;
 }
 
 int jake_find_symtab(jake_img_t img)
@@ -235,105 +334,64 @@ uint64_t jake_find_symbol(jake_img_t img, const char *name)
 
 uint64_t jake_fileoff_to_vaddr(jake_img_t img, uint64_t fileoff)
 {
-    uint64_t found_value = 0x0;
-    struct load_command **seg_array    = jake_find_load_cmds(img, LC_SEGMENT   );
-    struct load_command **seg_array_64 = jake_find_load_cmds(img, LC_SEGMENT_64);
-	struct load_command **iter = seg_array;
-
-    /* lookup in LC_SEGMENT's first */
-    if (seg_array != NULL)
+    for (struct load_command **cmd_ptr = img->load_commands; *cmd_ptr != NULL; cmd_ptr++)
     {
-        for (struct load_command *cmd = *iter++; cmd; cmd = *iter++)
+        struct load_command *cmd = *cmd_ptr;
+
+        if (cmd->cmd == LC_SEGMENT)
         {
             struct segment_command *seg = (struct segment_command *)cmd;
 
             if ((fileoff >= seg->fileoff) &&
                 (fileoff < (seg->fileoff + seg->filesize)))
             {
-                found_value = seg->vmaddr + (fileoff - seg->fileoff);
-                goto out;
+                return seg->vmaddr + (fileoff - seg->fileoff);
             }
         }
-    }
 
-    /* lookup in LC_SEGMENT_64's */
-    if (seg_array_64 != NULL)
-    {
-		iter = seg_array_64;
-        for (struct load_command *cmd = *iter; cmd; cmd = *iter++)
+        if (cmd->cmd == LC_SEGMENT_64)
         {
             struct segment_command_64 *seg = (struct segment_command_64 *)cmd;
 
             if ((fileoff >= seg->fileoff) &&
-				(fileoff < (seg->fileoff + seg->filesize)))
+                (fileoff < (seg->fileoff + seg->filesize)))
             {
-                found_value = seg->vmaddr + (fileoff - seg->fileoff);
-                goto out;
+                return seg->vmaddr + (fileoff - seg->fileoff);
             }
         }
     }
 
-out:;
-
-    if (seg_array)
-    {
-        free(seg_array);
-    }
-
-    if (seg_array_64)
-    {
-        free(seg_array_64);
-    }
-
-    return found_value;
+    return 0x0;
 }
 
 uint64_t jake_vaddr_to_fileoff(jake_img_t img, uint64_t vaddr)
 {
-	uint64_t found_value = 0x0;
-    struct load_command **seg_array    = jake_find_load_cmds(img, LC_SEGMENT   );
-    struct load_command **seg_array_64 = jake_find_load_cmds(img, LC_SEGMENT_64);
-	struct load_command **iter = seg_array;
-
-    /* lookup in LC_SEGMENT's first */
-    if (seg_array != NULL)
+    for (struct load_command **cmd_ptr = img->load_commands; *cmd_ptr != NULL; cmd_ptr++)
     {
-        for (struct load_command *cmd = *iter++; cmd; cmd = *iter++)
+        struct load_command *cmd = *cmd_ptr;
+
+        if (cmd->cmd == LC_SEGMENT)
         {
             struct segment_command *seg = (struct segment_command *)cmd;
 
             if ((vaddr >= seg->vmaddr) &&
                 (vaddr < (seg->vmaddr + seg->filesize)))
             {
-                found_value = seg->fileoff + (vaddr - seg->vmaddr);
-				goto out;
+                return seg->fileoff + (vaddr - seg->vmaddr);   
             }
         }
-    }
 
-    /* lookup in LC_SEGMENT_64's */
-    if (seg_array_64 != NULL)
-    {
-		iter = seg_array_64;
-        for (struct load_command *cmd = *iter; cmd; cmd = *iter++)
+        if (cmd->cmd == LC_SEGMENT_64)
         {
             struct segment_command_64 *seg = (struct segment_command_64 *)cmd;
 
             if ((vaddr >= seg->vmaddr) &&
                 (vaddr < (seg->vmaddr + seg->filesize)))
             {
-                found_value = seg->fileoff + (vaddr - seg->vmaddr);
-				goto out;
+                return seg->fileoff + (vaddr - seg->vmaddr);   
             }
         }
     }
 
-out:;
-	if (seg_array) {
-		free(seg_array);
-	}
-	if (seg_array_64) {
-		free(seg_array_64);
-	}
-    return found_value;
+    return 0x0;
 }
