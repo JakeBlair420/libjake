@@ -128,7 +128,7 @@ struct load_command **jake_find_load_cmds(jake_img_t img, int command)
     {
         return NULL;
     }
-
+    ++matching_cmd_count;
     /* holds array of pointers to load commands */
     struct load_command **lc_array = (struct load_command **)malloc(matching_cmd_count * sizeof(struct load_command *));
 
@@ -145,7 +145,7 @@ struct load_command **jake_find_load_cmds(jake_img_t img, int command)
 
         cmd = (struct load_command *)((uintptr_t)cmd + cmd->cmdsize);
     }
-
+    lc_array[curr_cmd_index++] = NULL;
     return lc_array;
 }
 
@@ -294,7 +294,7 @@ uint64_t jake_vaddr_to_fileoff(jake_img_t img, uint64_t vaddr)
     /* lookup in LC_SEGMENT's first */
     if (seg_array != NULL)
     {
-        for (struct load_command *cmd = *seg_array++; cmd; *seg_array++)
+        for (struct load_command *cmd = *seg_array++; cmd; cmd = *seg_array++)
         {
             struct segment_command *seg = (struct segment_command *)cmd;
 
@@ -310,7 +310,7 @@ uint64_t jake_vaddr_to_fileoff(jake_img_t img, uint64_t vaddr)
     /* lookup in LC_SEGMENT_64's */
     if (seg_array_64 != NULL)
     {
-        for (struct load_command *cmd = *seg_array_64; cmd; *seg_array++)
+        for (struct load_command *cmd = *seg_array_64; cmd; cmd = *seg_array++)
         {
             struct segment_command_64 *seg = (struct segment_command_64 *)cmd;
 
