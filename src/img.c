@@ -238,16 +238,17 @@ uint64_t jake_fileoff_to_vaddr(jake_img_t img, uint64_t fileoff)
     uint64_t found_value = 0x0;
     struct load_command **seg_array    = jake_find_load_cmds(img, LC_SEGMENT   );
     struct load_command **seg_array_64 = jake_find_load_cmds(img, LC_SEGMENT_64);
+	struct load_command **iter = seg_array;
 
     /* lookup in LC_SEGMENT's first */
     if (seg_array != NULL)
     {
-        for (struct load_command *cmd = *seg_array++; cmd; cmd = *seg_array++)
+        for (struct load_command *cmd = *iter++; cmd; cmd = *iter++)
         {
             struct segment_command *seg = (struct segment_command *)cmd;
 
-            if (fileoff >= seg->fileoff &&
-                fileoff < seg->fileoff + seg->filesize)
+            if ((fileoff >= seg->fileoff) &&
+                (fileoff < (seg->fileoff + seg->filesize)))
             {
                 found_value = seg->vmaddr + (fileoff - seg->fileoff);
                 goto out;
@@ -258,12 +259,13 @@ uint64_t jake_fileoff_to_vaddr(jake_img_t img, uint64_t fileoff)
     /* lookup in LC_SEGMENT_64's */
     if (seg_array_64 != NULL)
     {
-        for (struct load_command *cmd = *seg_array_64; cmd; cmd = *seg_array++)
+		iter = seg_array_64;
+        for (struct load_command *cmd = *iter; cmd; cmd = *iter++)
         {
             struct segment_command_64 *seg = (struct segment_command_64 *)cmd;
 
-            if (fileoff >= seg->fileoff &&
-                fileoff < seg->fileoff + seg->filesize)
+            if ((fileoff >= seg->fileoff) &&
+				(fileoff < (seg->fileoff + seg->filesize)))
             {
                 found_value = seg->vmaddr + (fileoff - seg->fileoff);
                 goto out;
@@ -272,6 +274,7 @@ uint64_t jake_fileoff_to_vaddr(jake_img_t img, uint64_t fileoff)
     }
 
 out:;
+	LOG("%llx => %llx\n",fileoff,found_value);
 
     if (seg_array)
     {
@@ -291,16 +294,17 @@ uint64_t jake_vaddr_to_fileoff(jake_img_t img, uint64_t vaddr)
 	uint64_t found_value = 0x0;
     struct load_command **seg_array    = jake_find_load_cmds(img, LC_SEGMENT   );
     struct load_command **seg_array_64 = jake_find_load_cmds(img, LC_SEGMENT_64);
+	struct load_command **iter = seg_array;
 
     /* lookup in LC_SEGMENT's first */
     if (seg_array != NULL)
     {
-        for (struct load_command *cmd = *seg_array++; cmd; cmd = *seg_array++)
+        for (struct load_command *cmd = *iter++; cmd; cmd = *iter++)
         {
             struct segment_command *seg = (struct segment_command *)cmd;
 
-            if (vaddr >= seg->vmaddr &&
-                vaddr < seg->vmaddr + seg->filesize)
+            if ((vaddr >= seg->vmaddr) &&
+                (vaddr < (seg->vmaddr + seg->filesize)))
             {
                 found_value = seg->fileoff + (vaddr - seg->vmaddr);
 				goto out;
@@ -311,12 +315,13 @@ uint64_t jake_vaddr_to_fileoff(jake_img_t img, uint64_t vaddr)
     /* lookup in LC_SEGMENT_64's */
     if (seg_array_64 != NULL)
     {
-        for (struct load_command *cmd = *seg_array_64; cmd; cmd = *seg_array++)
+		iter = seg_array_64;
+        for (struct load_command *cmd = *iter; cmd; cmd = *iter++)
         {
             struct segment_command_64 *seg = (struct segment_command_64 *)cmd;
 
-            if (vaddr >= seg->vmaddr &&
-                vaddr < seg->vmaddr + seg->filesize)
+            if ((vaddr >= seg->vmaddr) &&
+                (vaddr < (seg->vmaddr + seg->filesize)))
             {
                 found_value = seg->fileoff + (vaddr - seg->vmaddr);
 				goto out;
@@ -325,6 +330,7 @@ uint64_t jake_vaddr_to_fileoff(jake_img_t img, uint64_t vaddr)
     }
 
 out:;
+	LOG("%llx <= %llx\n",found_value,vaddr);
 	if (seg_array) {
 		free(seg_array);
 	}
