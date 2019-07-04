@@ -23,6 +23,10 @@ LIBTOOL = libtool
 MKDIR   = mkdir
 RM      = rm
 
+ifeq ($(BUILD_0DAY),1)
+	CFLAGS += -DZERODAY
+endif
+
 .PHONY: all test
 
 all: $(OUTDIR)/$(TARGET)
@@ -39,6 +43,7 @@ $(OUTDIR):
 $(OBJDIR):
 	$(MKDIR) -p $(OBJDIR)
 
+# this sux, sorry in advance 
 test:
 	xcrun gcc -o $(TSTBIN) $(TSTDIR)/*.c -I$(SRCDIR) $(INC) $(OUTDIR)/$(TARGET) $(LIB) -lssl -lcrypto 
 
