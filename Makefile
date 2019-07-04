@@ -6,49 +6,50 @@ OBJDIR  = obj
 TSTDIR  = test
 
 SOURCES = $(wildcard $(SRCDIR)/*.c)
-OBJECTS = $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(SOURCES)) 
+OBJECTS = $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(SOURCES))
 
-TSTBIN  = $(TSTDIR)/test 
+TSTBIN  = $(TSTDIR)/test
 
-ifeq ($(PLATFORM),ios)
-	CC = xcrun -sdk iphoneos gcc -arch arm64 -arch armv7s
-else
-	CC = gcc
-endif
-
-INC     = -I./img4lib/libvfs/
-LIB     = ./img4lib/lzss.o ./img4lib/libvfs/*.o ./img4lib/libDER/*.o ./img4lib/lzfse/build/bin/liblzfse.a
-CFLAGS  = -Wall -Wunused-command-line-argument
+CC      ?= xcrun -sdk iphoneos clang -arch arm64 -arch armv7
+CFLAGS  ?= -Wall -O3 -Wunused-command-line-argument -Iimg4lib/libvfs
+LDFLAGS ?= -L. -ljake -Limg4lib -limg4 -Limg4lib/lzfse/build/bin -llzfse -framework Security -framework CoreFoundation
 LIBTOOL = libtool
+LIBTOOL_FLAGS = -static
 MKDIR   = mkdir
 RM      = rm
 
-ifeq ($(BUILD_0DAY),1)
-	CFLAGS += -DZERODAY
+ifdef WITH_0DAY
+CFLAGS += -DWITH_0DAY=1
 endif
+
+export CC
+export COMMONCRYPTO = 1
 
 .PHONY: all test
 
-all: $(OUTDIR)/$(TARGET)
+all: $(TARGET)
 
-$(OUTDIR)/$(TARGET): $(OBJECTS) | $(OUTDIR)
-	$(LIBTOOL) -o $@ $^ 
+$(TARGET): $(OBJECTS)
+	$(LIBTOOL) $(LIBTOOL_FLAGS) -o $@ $^
 
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.c | $(OBJDIR)
-	$(CC) $(CFLAGS) $(INC) -c $< -o $@
-
-$(OUTDIR):
-	$(MKDIR) -p $(OUTDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OBJDIR):
 	$(MKDIR) -p $(OBJDIR)
 
-# this sux, sorry in advance 
-test:
-	xcrun gcc -o $(TSTBIN) $(TSTDIR)/*.c -I$(SRCDIR) $(INC) $(OUTDIR)/$(TARGET) $(LIB) -lssl -lcrypto 
+# this sux, sorry in advance
+test: $(TSTBIN)
+
+$(TSTBIN): $(TARGET) $(TSTDIR)/*.c img4lib/libimg4.a img4lib/lzfse/build/bin/liblzfse.a
+	$(CC) $(CFLAGS) -I$(SRCDIR) $(LDFLAGS) -o $@ $(TSTDIR)/*.c
+
+img4lib/libimg4.a:
+	$(MAKE) -C img4lib libimg4.a
+
+img4lib/lzfse/build/bin/liblzfse.a:
+	$(MAKE) -C img4lib/lzfse build/bin/liblzfse.a
 
 clean:
-	$(RM) -rf $(OUTDIR)
-	$(RM) -rf $(OBJDIR)
-
-	$(RM) -f $(TSTBIN)
+	$(RM) -rf $(TARGET) $(OBJDIR) $(TSTBIN)
+	$(MAKE) -C img4lib distclean

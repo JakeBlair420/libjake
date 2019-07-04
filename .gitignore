@@ -1,4 +1,5 @@
 .DS_Store
 .vscode/
-obj/
-lib/
+/obj
+/libjake.a
+/test/test
