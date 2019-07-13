@@ -22,7 +22,7 @@ ifdef WITH_0DAY
 CFLAGS += -DWITH_0DAY=1
 endif
 
-export CC
+export OVERRIDE_CC = $(CC)
 export COMMONCRYPTO = 1
 
 .PHONY: all test
