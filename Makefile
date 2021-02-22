@@ -18,10 +18,6 @@ LIBTOOL_FLAGS = -static
 MKDIR   = mkdir
 RM      = rm
 
-ifdef WITH_0DAY
-CFLAGS += -DWITH_0DAY=1
-endif
-
 export OVERRIDE_CC = $(CC)
 export COMMONCRYPTO = 1
 
@@ -29,7 +25,7 @@ export COMMONCRYPTO = 1
 
 all: $(TARGET)
 
-$(TARGET): $(OBJECTS)
+$(TARGET): $(OBJECTS) img4lib/libimg4.a
 	$(LIBTOOL) $(LIBTOOL_FLAGS) -o $@ $^
 
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.c | $(OBJDIR)
@@ -41,15 +37,16 @@ $(OBJDIR):
 # this sux, sorry in advance
 test: $(TSTBIN)
 
-$(TSTBIN): $(TARGET) $(TSTDIR)/*.c img4lib/libimg4.a img4lib/lzfse/build/bin/liblzfse.a
+$(TSTBIN): $(TARGET) $(TSTDIR)/*.c
 	$(CC) $(CFLAGS) -I$(SRCDIR) $(LDFLAGS) -o $@ $(TSTDIR)/*.c
 
-img4lib/libimg4.a:
-	$(MAKE) -C img4lib libimg4.a
+img4lib/libimg4.a: img4lib/lzfse/build/bin/liblzfse.a
+	$(MAKE) $(AM_MAKEFLAGS) -C img4lib libimg4.a
 
 img4lib/lzfse/build/bin/liblzfse.a:
-	$(MAKE) -C img4lib/lzfse build/bin/liblzfse.a
+	$(MAKE) $(AM_MAKEFLAGS) -C img4lib/lzfse build/bin/liblzfse.a
 
 clean:
 	$(RM) -rf $(TARGET) $(OBJDIR) $(TSTBIN)
-	$(MAKE) -C img4lib distclean
+	$(MAKE) $(AM_MAKEFLAGS) -C img4lib distclean
+	$(MAKE) $(AM_MAKEFLAGS) -C img4lib/lzfse clean
