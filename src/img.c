@@ -16,6 +16,8 @@ int jake_init_image(jake_img_t img, const char *path)
 {
     int ret = 0;
 
+    memset(img,0,sizeof(jake_img)); // make sure we set everything to zero otherwise we might touch stuff in the error path that was uninited
+    
     if (access(path, F_OK) != 0)
     {
         LOG("Could not find file '%s'", path);
@@ -90,6 +92,17 @@ int jake_init_image(jake_img_t img, const char *path)
             LOG("Failed to map image");
             goto fail;
         }
+    }
+    else if (file_magic == 0x646c7964) // dyld shared cache
+    {
+        img->map = mmap(NULL, img->filesize, PROT_READ, MAP_PRIVATE, img->filedesc, 0);
+        if (img->map == MAP_FAILED)
+        {
+            LOG("Failed to map image");
+            goto fail;
+	}
+        LOG("Mapped the dyld cache but didn't parsed the symtab only partial functionality present");
+        return 0;
     }
     else
     {
